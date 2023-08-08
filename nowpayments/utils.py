@@ -23,13 +23,25 @@ from typing import Literal, Union, Any, List, Dict, NoReturn
 from .dataclasses import (
      Invoice,
      Payment,
-     InvoicePayment
+     InvoicePayment,
+     IPNCompatibleResponse
 )
 
 class mimetypes(Enum):
     png: "mimetypes.png" = auto()
     jpg: "mimetypes.jpg" = auto()
     jpeg: "mimetypes.jpeg" = auto()
+
+
+class currency(Enum):
+    usd: "currency.usd" = auto()
+    eur: "currency.eur" = auto()
+    gbp: "currency.gbp" = auto()
+    xtry: "currency.xtry" = auto()
+
+class exchanges(Enum):
+    eth: "exchanges.eth" = auto()
+    btc: "exchanges.btc" = auto()
 
 class types(Enum):
     invoice: "types.invoice" = auto()
@@ -58,7 +70,7 @@ class ImageSaved(Image):
 class NowPaymentsAPI:
     base_url = "https://api.nowpayments.io/v1"
     api_key: str
-    def __init__(self, api_key: str) -> NoReturn:
+    def __init__(self, api_key: str):
         self.api_key = api_key
         assert (api_key), "You have to pass API Key to access NowPayments API Features"
         self.headers = {"x-api-key": self.api_key, 'Content-Type': 'application/json'}
@@ -86,12 +98,13 @@ class NowPaymentsAPI:
 
 
 class PaymentContext(NowPaymentsAPI, InvoicePayment):
-    def __init__(self, response: Response, api_key: str) -> NoReturn:
+    def __init__(self, response: Response, api_key: str):
             self.response = response
             super().__init__(api_key)
 
             for k, v in self.data.items():
-                setattr(self, k, v)
+                if not k.startswith("_"):
+                    setattr(self, k, v)
     @property
     def data(self) -> dict:
         return self.response.json()
@@ -101,9 +114,11 @@ class PaymentContext(NowPaymentsAPI, InvoicePayment):
         return GetPaymentContext(response=response, api_key=self.api_key)
     
     def qr(self, image: str = None, file_extension: mimetypes = mimetypes.png, fstream: bool = False) -> ImageSaved | BytesIO:
+        if not image:
+            image = f"{self.order_id}.{file_extension if isinstance(file_extension, str) else file_extension.name}"
         assert bool(isinstance(file_extension, (str, mimetypes))), \
             "File extension must be instance of str or mimetypes enum member."
-        assert ("\\" in image), \
+        assert ("\\" not in image), \
             "Image path can not include backslash/pipe character."
        
         if not image:
@@ -141,12 +156,13 @@ class InvoiceContext(NowPaymentsAPI, Invoice):
     updated_at: str
     is_fixed_rate: bool
     is_fee_paid_by_user: bool
-    def __init__(self, response: Response, api_key: str) -> NoReturn:
+    def __init__(self, response: Response, api_key: str):
             self.response = response
             super().__init__(api_key)
 
             for k, v in self.data.items():
-                setattr(self, k, v)
+                if not k.startswith("_"):
+                    setattr(self, k, v)
         
     @property
     def data(self) -> dict:
@@ -178,12 +194,13 @@ class GetPaymentContext(NowPaymentsAPI):
     updated_at: str
     burning_percent: float | int
     type: str
-    def __init__(self, response: Response, api_key: str) -> NoReturn:
+    def __init__(self, response: Response, api_key: str):
         self.response = response
         super().__init__(api_key)
 
         for k, v in self.data.items():
-            setattr(self, k, v)
+            if not k.startswith("_"):
+                setattr(self, k, v)
     
     @property
     def data(self) -> dict:
@@ -196,7 +213,7 @@ class GetPaymentContext(NowPaymentsAPI):
 
 
 class Invoices(NowPaymentsAPI, Invoice):
-    def __init__(self, invoice: Invoice, api_key: str) -> NoReturn:
+    def __init__(self, invoice: Invoice, api_key: str):
         super().__init__(api_key)
         self.invoice = invoice
 
@@ -206,10 +223,38 @@ class Invoices(NowPaymentsAPI, Invoice):
     
 
 class Payments(NowPaymentsAPI):
-    def __init__(self, payment: Payment, api_key: str) -> NoReturn:
+    def __init__(self, payment: Payment, api_key: str):
         super().__init__(api_key)
         self.payment = payment
 
     def create_payment(self):
         response = self.create(type=types.invoice_payment, instance=self.payment, headers=self.headers)
         return PaymentContext(response=response, api_key=self.api_key)
+
+class Plugins(NowPaymentsAPI):
+        def __init__(self, api_key: str):
+            super().__init__(api_key=api_key)
+            self.api_key = api_key
+
+        def create_payment(self, client_id: int, amount: float | int, price_currency: str | currency = currency.usd, pay_currency: str | exchanges = exchanges.btc, order_description: str = None) -> IPNCompatibleResponse:
+            hashed = hash("%s:%s" % (client_id, id(client_id)))
+            price_currency = price_currency.name if isinstance(price_currency, currency) else price_currency
+            invmeta = Invoice(
+                price_amount=amount,
+                price_currency=price_currency.lower().strip(),
+                order_id="ORD-%d" % abs(hashed),
+                order_description="Subscription Payment" if not order_description else order_description,
+                ipn_callback_url="http://your_api/api/trash_callback", # if you dont use callbacks, set value to None
+                success_url="http://your_api/api/hook/success",
+                cancel_url="http://your_api/api/hook/cancel"
+            )
+            invoice = Invoices(invoice=invmeta, api_key=self.api_key)
+            invoice = invoice.create_invoice()
+            pay_currency = pay_currency.name if isinstance(pay_currency, exchanges) else pay_currency
+            draft_payment = Payment(invoice.id, pay_currency.lower().strip() if pay_currency else exchanges.btc.name, invoice.order_description)
+            payment = Payments(payment=draft_payment, api_key=self.api_key)
+            payment = payment.create_payment()
+            qr_image = payment.qr()
+            url = payment.create_payment_url(invoice=invoice)
+            npc = NowPaymentsAPI(api_key=self.api_key)
+            return IPNCompatibleResponse(id=payment.payment_id, npc=npc, url=url, invoice=invoice, payment=payment, qr=qr_image)

@@ -12,8 +12,11 @@ https://developers.telepai.com
 
 from .utils import (
     types,
+    currency,
+    exchanges,
     Payment,
     Invoice,
+    Plugins,
     Invoices,
     Payments,
     NowPaymentsAPI,
@@ -26,4 +29,3 @@ from .utils import (
 
 
 from .dataclasses import Invoice, Payment, InvoicePayment
-

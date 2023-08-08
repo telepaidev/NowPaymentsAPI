@@ -18,7 +18,7 @@ invoice = Invoice(**response) # this will return a Invoice object that has all f
 """
 
 from pydantic.dataclasses import dataclass
-
+from typing import Any
 
 @dataclass
 class Invoice:
@@ -32,6 +32,12 @@ class Invoice:
   
   @property
   def data(self):
+      for k,v in self.__dict__.copy().items():
+         if k.startswith("_"):
+            self.__dict__.pop(k)
+      for k,v in self.__dict__.copy().items():
+         if k.startswith("_"):
+            self.__dict__.pop(k)
       return dict(self.__dict__)
 
 
@@ -43,6 +49,9 @@ class Payment:
   
   @property
   def data(self):
+      for k,v in self.__dict__.copy().items():
+         if k.startswith("_"):
+            self.__dict__.pop(k)
       return dict(self.__dict__)
 
 
@@ -75,4 +84,28 @@ class InvoicePayment:
     
     @property
     def data(self) -> dict:
+        for k,v in self.__dict__.copy().items():
+          if k.startswith("_"):
+            self.__dict__.pop(k)
         return dict(self.__dict__)
+  
+
+@dataclass
+class IPNCompatibleResponse:
+    id: int = Any
+    npc: Any = Any
+    url: str = Any
+    invoice: Any = Any
+    payment: Any = Any
+    qr: str | bytes = Any
+
+    def __init__(self, *args, **kwargs):
+       for k,v in kwargs.items():
+          setattr(self, k, v)
+       condition = all(
+        filter(
+          lambda x: not x[0].startswith("_"), 
+          self.__dict__.items()
+        )
+        )
+       assert (condition), "All fields must be filled."
