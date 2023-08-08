@@ -1,3 +1,4 @@
+"""
 ## Note: Firstly you should install the library, what else program can't find 'nowpayments' module.
 
 ## Clone repository and move to python/site-packages directory.
@@ -5,6 +6,7 @@
 ## In mac: 
 - cd /Library/Frameworks/Python.framework/versions/3.x/lib/python3.x/site-packages
 - mv /Users/mert/Desktop/nowpayments .
+"""
 
 from nowpayments import (
       currency,
