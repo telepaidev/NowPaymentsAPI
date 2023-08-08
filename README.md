@@ -2,6 +2,8 @@
 
 An official API wrapper for NowPayments.
 
+Check this gists for example: [click](https://gist.github.com/fswair/cac346b06a61f93c1d24941bc6b56877)
+
 ## Introduction
 
 Welcome to NowPaymentsAPI Wrapper, lets start to create payments.
